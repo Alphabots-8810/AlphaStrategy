@@ -1,0 +1,10 @@
+[00:10:15] validate start
+[00:18:17] validate exit 0
+[00:18:17] alliance-regular
+[00:30:44] alliance-regular exit 0
+[00:30:44] alliance-champs
+results/run_all.sh: line 7: 84430 Terminated: 15          $PY experiments/alliance.py --event champs --matches 400 --iters 300 --scen 16 > results/alliance_champs.log 2>&1
+[00:31:58] alliance-champs exit 0
+[00:31:59] sensitivity
+[00:44:21] sensitivity exit 0
+[00:44:21] ALL DONE

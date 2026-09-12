@@ -1,0 +1,6 @@
+[00:33:00] alliance-regular start
+[00:44:04] alliance-regular exit 0
+[00:44:04] alliance-champs start
+results/run_alliance.sh: line 5:  9099 Terminated: 15          $PY experiments/alliance.py --event $ev --matches 400 --iters 300 --scen 16 > results/alliance_$ev.log 2>&1
+[00:46:54] alliance-champs exit 0
+[00:46:54] ALL DONE

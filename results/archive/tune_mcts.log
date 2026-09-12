@@ -1,0 +1,24 @@
+# MCTS tuning — `elite`, TELEOP only, V* = 108.63, 120 CRN matches
+
+Rollout baselines (the heuristic alone): greedy-proc 105.13 (gap -3.81), greedy-net 90.43 (gap -18.51)
+
+| rollout | prior | c | iters | mean | paired gap vs DP | vs its rollout | s |
+|---|---|---|---|---|---|---|---|
+| greedy-proc | 0 | 0.02 | 200 | 94.17 | -14.77 ± 1.46 | -10.96 ± 1.42 | 13 |
+| greedy-proc | 0 | 0.02 | 800 | 95.93 | -13.01 ± 0.97 | -9.20 ± 0.95 | 53 |
+| greedy-proc | 0 | 0.05 | 200 | 95.46 | -13.48 ± 1.28 | -9.68 ± 1.26 | 13 |
+| greedy-proc | 0 | 0.05 | 800 | 96.97 | -11.97 ± 1.13 | -8.16 ± 1.09 | 53 |
+| greedy-proc | 0 | 0.1 | 200 | 96.09 | -12.85 ± 1.18 | -9.04 ± 1.12 | 13 |
+| greedy-proc | 0 | 0.1 | 800 | 97.64 | -11.30 ± 1.02 | -7.49 ± 1.02 | 53 |
+| greedy-proc | 0 | 0.2 | 200 | 98.58 | -10.37 ± 0.99 | -6.56 ± 0.96 | 14 |
+| greedy-proc | 0 | 0.2 | 800 | 98.48 | -10.46 ± 1.01 | -6.65 ± 0.96 | 52 |
+| greedy-proc | 0 | 0.5 | 200 | 100.62 | -8.32 ± 0.86 | -4.52 ± 0.79 | 13 |
+| greedy-proc | 0 | 0.5 | 800 | 98.89 | -10.05 ± 1.00 | -6.24 ± 0.94 | 54 |
+| greedy-net | 0 | 0.02 | 200 | 94.54 | -14.40 ± 1.25 | +4.11 ± 1.13 | 25 |
+| greedy-net | 0 | 0.02 | 800 | 95.43 | -13.51 ± 1.20 | +5.00 ± 1.04 | 136 |
+| greedy-net | 0 | 0.05 | 200 | 94.01 | -14.93 ± 1.24 | +3.58 ± 1.19 | 49 |
+| greedy-net | 0 | 0.05 | 800 | 95.71 | -13.23 ± 1.35 | +5.28 ± 1.26 | 187 |
+| greedy-net | 0 | 0.1 | 200 | 96.38 | -12.56 ± 1.13 | +5.95 ± 1.24 | 43 |
+| greedy-net | 0 | 0.1 | 800 | 97.37 | -11.57 ± 1.15 | +6.93 ± 1.17 | 134 |
+/opt/homebrew/Cellar/python@3.11/3.11.15_4/Frameworks/Python.framework/Versions/3.11/lib/python3.11/multiprocessing/resource_tracker.py:254: UserWarning: resource_tracker: There appear to be 5 leaked semaphore objects to clean up at shutdown
+  warnings.warn('resource_tracker: There appear to be %d '
