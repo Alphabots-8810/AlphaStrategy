@@ -33,14 +33,18 @@ HIGH_ALGAE_PER_REEF = 3
 CORAL_MARK_ALGAE_PER_ALLIANCE = 3
 
 # Which levels on a face are blocked while that face's staged ALGAE remains.
-# NOT stated numerically in the manual; inferred from Figure 6-3 + §6.5.1.
+# Not stated numerically in the manual. "B" is confirmed (2026-09): §6.5.1 (a CORAL touching
+# an ALGAE doesn't score) and §6.3.4.2 ("Staged ALGAE will not contact CORAL placed on L4")
+# agree with Chief Delphi thread 482048, posts 88 (jacob6838, with a photo: a high ALGAE
+# blocks both L3 branches it sits on; a low ALGAE touches CORAL on L3 and blocks L2) and
+# 102 (Garrison: 6 L2 branches stay free). "A" is kept for comparison. Which faces carry
+# high vs low ALGAE: routing.py (from 6328 FieldConstants).
 # Two readings, selectable via GameConfig.algae_blocking:
 #   "B" (default): low ALGAE (sits on the L2 pair) blocks L2 and L3 on its face;
 #                  high ALGAE (sits on the L3 pair) blocks L3 on its face.
 #                  => L3 has 0 free branches at match start.
 #   "A":           each ALGAE blocks only the pair it rests on
 #                  (low -> L2, high -> L3). => L2 and L3 each start with 6 free.
-# The manual's explicit L4-only non-contact guarantee is weak evidence for "B".
 ALGAE_BLOCKING = {
     "A": {"low": (2,), "high": (3,)},
     "B": {"low": (2, 3), "high": (3,)},
