@@ -26,4 +26,7 @@ wait
 echo "[$(date +%T)] tie-rule A/B start"
 $PY experiments/tie_rule_ab.py > results/tie_rule_ab.log 2>&1
 echo "[$(date +%T)] tie-rule A/B exit $?"
+echo "[$(date +%T)] route-alliance start"
+$PY experiments/route_alliance.py > results/route_alliance.log 2>&1
+echo "[$(date +%T)] route-alliance exit $?"
 echo "[$(date +%T)] ALL DONE"
