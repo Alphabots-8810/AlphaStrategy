@@ -2,12 +2,14 @@
 
 [中文](README.md) | English
 
-_Last updated: 2026-09-12_ · By FRC 8810 Alphabots, part of the Alpha* line ([AlphaSim](https://github.com/Alphabots-8810/AlphaSim), [AlphaScout](https://github.com/Alphabots-8810/AlphaScout), [AlphaHarness](https://github.com/Alphabots-8810/AlphaHarness)).
+_Last updated: 2026-09-15_ · By FRC 8810 Alphabots, part of the Alpha* line ([AlphaSim](https://github.com/Alphabots-8810/AlphaSim), [AlphaScout](https://github.com/Alphabots-8810/AlphaScout), [AlphaHarness](https://github.com/Alphabots-8810/AlphaHarness)).
 
 An event-driven FRC match simulator plus three solvers (unfamiliar terms are defined in the [Glossary](#glossary)):
 - **Exact single-robot DP**: the theoretical optimum of expected TELEOP points under the simulator's own stochastic model — the ground truth;
 - **CRN rollout planner**: handles what the DP can't — three-robot alliance coupling, RP thresholds, win probability. It is the practical choice: 1.4% from the DP optimum at 32 scenarios, about 1 CPU·s per match;
 - **Closed-loop MCTS**: also works on a single robot and is also validated against the DP, but needs pruning. For equal accuracy it costs about 6× the compute of rollout; at about 12× it gets about 0.4 points closer to the optimum than rollout. At alliance level, MCTS with the RP objective is currently well behind the heuristics, cause not yet found (see "Known, not fixed").
+
+There is also an **alliance routing model** (`routing.py`): using real field coordinates and acceleration limits, it works out how three robots split the reef, in what order and along which paths, to fill L2–L4. Its parameters are 8810's ideal values; see finding 5.
 
 > ⚠️ v0 prototype. Robot profiles (cycle times, success rates, drive times) are **uncalibrated, hand-set values**, so absolute scores mean nothing — **read the differences and sensitivities**. Calibrate with scouting data before using it for decisions.
 
@@ -65,17 +67,36 @@ The numbers below are paired differences, greedy-proc (all algae to the processo
 - l1bot adds a shallow climb: +0.17;
 - mid adds L4: ≈ 0.
 
+**5. Filling L2–L4 as an alliance: the route is worth a few seconds; what matters is each robot's cycle time.**
+
+This finding uses a different model (`routing.py`, not the simulator above): real field coordinates (WPILib 2025 AprilTags), shortest paths around the reef, and each leg timed with acceleration limits (a trapezoidal velocity profile). The parameters are 8810's ideal values: top speed 4 m/s, acceleration 5 m/s², intake 1.0 s, placing L2/L3 0.7 s and L4 1.0 s; algae removal 0.8 s, processor / net 0.5 s and the 0.45 m from robot centre to bumper are placeholders. The reef starts empty (no AUTO); robots blocking each other on the way and defense are not modelled. Full numbers in [results/route_alliance.md](results/route_alliance.md).
+
+- **How many robots can fill it**: 1 robot needs 202 s, so it can't within TELEOP's 135 s; 2 robots 102 s; 3 robots 71 s, at which point each robot's average cycle is about 5.7 s.
+- **How you schedule barely matters**:
+  - The best fixed plan found by simulated annealing takes 67.7 s, and picking the fastest option at every step takes 71.4 s; with random variation both are about 73 s, and the simple "two faces per robot" is 72.5 s.
+  - All 15 ways of giving each robot two faces land between 72.5 and 73.5 s with random variation.
+  - No planning at all (each robot keeps one station and fills in AB→KL order) takes 77.3 s — only about 5 s slower.
+- **What matters is the cycle time**: 0.5 s more alignment at every stop makes 3 robots 12 s slower. To be full by about 115 s (leaving 20 s for the endgame), each of 3 robots needs an average cycle of at most about 9.3 s, and each of 2 robots at most about 6.3 s (both interpolated linearly between neighbouring rows of section 8 in the results file). Time your own average cycle (defined in the glossary) from match video and look it up in section 8 of the results file.
+- **Recommended play**:
+  - Zones: CD+EF, AB+GH, IJ+KL; every trip uses the station that gets the coral placed soonest, almost always the one nearest the target face.
+  - Place L4 → L3 → L2: the reef fills just as fast (71.1 vs 71.3 s with algae knocked to the floor, 76.0 s both ways when it is carried), but points come in earlier — 8 / 6 more by 20 / 30 s.
+  - Carry the algae instead of knocking it to the floor: the 2 from CD and EF go to the processor (for coop in qualifications), the other 4 to the net. This costs about 5 s (77.7 vs 72.5 s with random variation) and earns 28 points; the opponent HP can get back at most 8.
+  - With random variation this play fills the reef in a median 77.2 s, p90 81.3 s.
+
+![Alliance route map](results/route_alliance.svg)
+
 ## Quick start
 
 ```bash
 python3.11 -m venv .venv && .venv/bin/pip install -e '.[dev]'
-.venv/bin/python -m pytest -q                       # 127 tests, ~20 s
+.venv/bin/python -m pytest -q                       # 170 tests, ~25 s
 .venv/bin/python experiments/validate.py            # single robot: DP vs heuristics vs planners (fresh seeds)
 .venv/bin/python experiments/tune_mcts.py --rollouts proc --c 0.5 --prune 0,25 --matches 120 --out results/tune_mcts_prune.md   # MCTS pruning comparison
 .venv/bin/python experiments/tune_mcts.py --rollouts proc --c 0.02,0.05,0.1,0.2,0.5 --prune 0 --matches 120 --out results/tune_mcts_sweep.md   # unpruned MCTS, c sweep
 .venv/bin/python experiments/alliance.py --seed-offset 200000   # alliance: heuristics vs rollout / MCTS
 .venv/bin/python experiments/sensitivity.py --dp    # sensitivities (the deliverable)
 .venv/bin/python experiments/tie_rule_ab.py         # effect of the rollout tie rule (lesson 5)
+.venv/bin/python experiments/route_alliance.py      # alliance fill of L2–L4: routes, zones, order, algae (a few minutes)
 results/run_final.sh                                # rerun every experiment the README cites (no tests; ~1 hour, all cores)
 ```
 
@@ -251,9 +272,14 @@ Items and numbers marked † come from one-off audit scripts; neither the script
 - HP net throws ignore the time left: algae processed in the last few seconds still count as throwable by the opponent HP. Measured to have no effect †: over 400 matches for each of three heuristics and 100 for rollout-rp (z=1), zero processor scores completed in the last 5 s; the closest was 16 s from the end.
 - At alliance level, MCTS-rp (300 iterations, pruned) is still well behind greedy-proc, the heuristic it simulates with: P(win) 0.23 vs 0.63, E[RP] 3.27 vs 4.12. The cause isn't located — possibly small-budget noise, mean pollution at internal nodes, or c calibrated on the single robot not transferring to the rp objective. Until it is, use CRN rollout at alliance level.
 
-## Assumptions to confirm
+## Assumptions
 
-1. **Algae blocking**: the manual doesn't say exactly which branches staged algae block. The default is reading B (low algae blocks L2+L3 on its face, high algae blocks L3; 0 L3 available at the start). Reading A: each algae blocks only the pair it rests on (6 left on each of L2/L3). Teams that played 2025 will know which is right — issues welcome.
+1. **Algae blocking: reading B is confirmed** (low algae blocks L2+L3 on its face, high algae blocks L3; 0 L3 available at the start). The manual doesn't state it directly, but the sources agree:
+   - Manual §6.5.1: coral touching algae doesn't score; §6.3.4.2: "Staged ALGAE will not contact CORAL placed on L4".
+   - Chief Delphi thread 482048, an early-season discussion: [post 88](https://www.chiefdelphi.com/t/482048/88) (jacob6838, with a photo) says a high algae blocks both L3 branches it sits on, and a low algae touches coral on L3 and blocks L2; [post 102](https://www.chiefdelphi.com/t/482048/102) (Garrison) says 6 L2 branches are not blocked.
+   - Which faces carry which algae is known too: AB, EF, IJ high; CD, GH, KL low (6328 RobotCode2025Public `FieldConstants`; see `routing.py`).
+
+   Reading A (each algae blocks only the pair it rests on, leaving 6 on each of L2/L3) is kept for comparison only.
 2. **Profile values**: the travel matrix, action durations, success rates and HP net accuracy (default 50%) are all placeholders. The "about 68%" break-even in finding 2 depends directly on them.
 3. **elite can hold 1 coral + 1 algae at once** (`hold_both=True`). The DP-optimal "carry algae to the station" trick depends on it.
 4. No defense, fouls or mechanism failures, and dropped coral can't be picked up again. The 3 coral-mark algae are assumed still on the floor at the start of TELEOP (AUTO's effect on them isn't modelled), and their pickup point is approximated as near the reef.
@@ -267,7 +293,7 @@ Items and numbers marked † come from one-off audit scripts; neither the script
 
 ## Glossary
 
-Look terms up as needed; there is no need to read it all. The main findings mostly use the first three groups; the last two cover solver and model details.
+Look terms up as needed; there is no need to read it all. The main findings mostly use the first three groups (finding 5 also uses the last one); the fourth and fifth cover solver and model details.
 
 ### Reading the numbers
 
@@ -306,7 +332,7 @@ Look terms up as needed; there is no need to read it all. The main findings most
 | **Coral / algae** | The two game pieces. Coral goes on the reef's L1–L4; algae go into the processor or the net. |
 | **L1–L4 / branch** | The reef's four coral levels. L2–L4 have 12 branches (the posts coral sits on) per level; L1 is a trough with no limit. |
 | **Processor / net / HP** | The two places algae go. The processor is worth 6, but the algae roll to the other side, where the opponent's HP (human player at the field edge) can throw them into their own net for another 4; a robot scoring in the net gets 4 directly. |
-| **Staged algae / algae blocking A, B** | Algae placed on the reef at the start block some branches. The manual doesn't say exactly which, so there are two readings, A and B; see "Assumptions to confirm". |
+| **Staged algae / algae blocking A, B** | The 6 algae placed on the reef at the start (high on AB, EF, IJ; low on CD, GH, KL) block some branches. Reading B is confirmed: low algae blocks L2+L3 on its face, high algae blocks L3; reading A is kept for comparison only. See "Assumptions", item 1. |
 | **Coopertition (coop)** | Qualifications only: each alliance puts at least 2 algae in its processor. Once reached, the Coral RP needs only 3 levels at the threshold. |
 | **RP** | Ranking Points, the qualification ranking score. Win 3, tie 1, plus three bonus RPs: Auto RP, Coral RP, Barge RP. No RP in playoffs. |
 | **Coral RP** | Every level L1–L4 reaches the threshold: 5 in regular season and at District Championships (DCMP), 7 at Championship; with coop, 3 levels are enough. |
@@ -369,14 +395,26 @@ Look terms up as needed; there is no need to read it all. The main findings most
 | **Invariant / fuzzing** | Invariant = a property that must always hold, e.g. "coral on each of L2–L4 never exceeds the unblocked branches". The repo's tests check invariants by simulating random actions; the audit also ran 2000 random configurations (†) — that is fuzzing. |
 | **Forward probability propagation** | Instead of sampling matches, push the exact probability of every situation forward from the start, step by step (identical situations combined), which gives a policy's exact average score. The audit used it to confirm the DP and the simulator agree. |
 
+### Alliance routing (finding 5)
+
+| Term | Meaning |
+|---|---|
+| **Cycle** | The time between one robot's consecutive placements: after placing, go back to a station, pick up and place the next — queueing and algae removal included. This repo's "average cycle" = a robot's time from the start to its last placement ÷ the coral it placed. |
+| **Trapezoidal velocity profile** | Accelerate from rest to top speed, cruise, decelerate to a stop; speed vs time is a trapezoid, or a triangle when the leg is too short to reach top speed. Leg time = distance ÷ top speed + top speed ÷ acceleration (triangle: 2√(distance ÷ acceleration)). |
+| **Lower bound** | A time no schedule can beat: all the unavoidable work (each coral's intake, placement, shortest trips, algae removal) split evenly across the robots, with no waiting. The closer a schedule gets to it, the less there is left to optimize. |
+| **Simulated annealing** | A search method: change the plan at random (swap two coral, or hand one to another robot), keep changes that are faster, and keep slower ones with a probability that shrinks over time, so the search doesn't get stuck on a merely "locally best" plan. |
+| **Fixed plan / reactive** | Fixed plan = decide before the match which coral each robot places, in which order; reactive = after each placement, pick whatever is fastest right now. |
+| **Zones** | Each robot is responsible for a fixed set of reef faces and helps the others once its own are full. |
+| **p10 / p50 / p90 / p99** | Percentiles: sort all simulated results from fastest to slowest and take the value 10% / 50% / 90% / 99% of the way along. p50 is the median; p90 = 90% of matches are faster. |
+
 ## Layout
 
 ```
 src/frcsim/mcts.py                 game-agnostic MCTS (split out along a file boundary only; no generic game interface)
-src/frcsim/reefscape2025/          rules / profiles / simulator / DP / policies
-experiments/                       validate, planners, tune_mcts, alliance, sensitivity, tie_rule_ab
-tests/                             DP vs expectimax (incl. ring-buffer wraparound), simulator invariants, RP logic, planners, MCTS convergence
-results/                           experiment outputs: validate_elite.md, alliance_{regular,champs}_B.md, sensitivity.md, tune_mcts_{prune,sweep}.md, tie_rule_ab.md
+src/frcsim/reefscape2025/          rules / profiles / simulator / DP / policies / alliance routing (routing.py)
+experiments/                       validate, planners, tune_mcts, alliance, sensitivity, tie_rule_ab, route_alliance
+tests/                             DP vs expectimax (incl. ring-buffer wraparound), simulator invariants, RP logic, planners, MCTS convergence, alliance routing
+results/                           experiment outputs: validate_elite.md, alliance_{regular,champs}_B.md, sensitivity.md, tune_mcts_{prune,sweep}.md, tie_rule_ab.md, route_alliance.{md,svg}
 ```
 
 ## License

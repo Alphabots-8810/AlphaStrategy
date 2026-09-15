@@ -2,12 +2,14 @@
 
 中文 | [English](README.en.md)
 
-_Last updated: 2026-09-12_ · FRC 8810 Alphabots 出品，属于 Alpha* 系列（[AlphaSim](https://github.com/Alphabots-8810/AlphaSim)、[AlphaScout](https://github.com/Alphabots-8810/AlphaScout)、[AlphaHarness](https://github.com/Alphabots-8810/AlphaHarness)）。
+_Last updated: 2026-09-15_ · FRC 8810 Alphabots 出品，属于 Alpha* 系列（[AlphaSim](https://github.com/Alphabots-8810/AlphaSim)、[AlphaScout](https://github.com/Alphabots-8810/AlphaScout)、[AlphaHarness](https://github.com/Alphabots-8810/AlphaHarness)）。
 
 事件驱动的 FRC 比赛模拟器，加上三种求解器（看不懂的词先查[术语表](#术语表)）：
 - **单车精确 DP**：在模拟器自己的随机模型下，求期望 TELEOP 得分的理论最优解，作为标准答案（ground truth）；
 - **CRN rollout 规划器**：处理联盟三车耦合、RP 门槛、胜率这些 DP 算不动的目标。它是实际首选：32 个场景时离 DP 最优差 1.4%，每局约 1 CPU·s；
 - **闭环 MCTS**：单车上同样能用，也用 DP 校验过，但要剪枝。达到同样精度，它要花 rollout 约 6 倍的算力；算力加到约 12 倍时，能比 rollout 再接近最优约 0.4 分。联盟层面以 RP 为目标的 MCTS 目前明显落后于启发式，原因还没查清（见"未修"）。
+
+另有一个**联盟路线模型**（`routing.py`）：用真实场地坐标和加减速，算三台车怎么分工、按什么顺序、走哪条路放满 L2–L4。参数是 8810 给的理想值，见发现 5。
 
 > ⚠️ v0 原型。机器人 profile（cycle 时间、成功率、行驶时间）是**未标定的手设值**，所以绝对分数没有意义，**看差值和灵敏度**。要用于决策，得先接入 scouting 数据来标定。
 
@@ -65,17 +67,36 @@ rp-seeker 每局都拿到 Coral RP，但少赢的场次让它总 RP 更低。原
 - l1bot 加 shallow climb：+0.17；
 - mid 加 L4：≈ 0。
 
+**5. 联盟放满 L2–L4：路线怎么排只差几秒，关键是每台车的 cycle 时间。**
+
+这一条用的是另一个模型（`routing.py`，不是上面的模拟器）：真实场地坐标（WPILib 2025 AprilTag），绕开 reef 的最短路径，每段路按加减速算时间（梯形速度曲线）。参数是 8810 给的理想值：最高速度 4 m/s，加速度 5 m/s²，intake 1.0 s，放 L2/L3 0.7 s、L4 1.0 s；去藻 0.8 s、进 processor / net 0.5 s、车中心到保险杠 0.45 m 是占位值。开局 reef 是空的，没算 AUTO；车在路上互相挡、防守也都没算。完整数字见 [results/route_alliance.md](results/route_alliance.md)。
+
+- **几台车能放满**：1 台要 202 s，TELEOP 135 s 放不满；2 台 102 s；3 台 71 s，这时每台车平均 cycle 约 5.7 s。
+- **怎么排几乎没影响**：
+  - 模拟退火搜出来的最优固定计划 67.7 s，现场每步挑最快的 71.4 s；加上随机误差后两者都约 73 s，简单的"每车包两个面"是 72.5 s。
+  - "每车两个面"一共 15 种分法，加随机误差后都在 72.5–73.5 s 之间。
+  - 完全不规划（每车固定一个 station，按 AB→KL 的顺序放）是 77.3 s，也只慢约 5 s。
+- **真正要紧的是 cycle 时间**：每次停车多花 0.5 s 对位，3 台车放满就慢 12 s。要在约 115 s 前放满（留 20 s 给 endgame），3 台车时每台平均 cycle 不能超过约 9.3 s，2 台车时不能超过约 6.3 s（都是在结果文件第 8 节相邻两档之间线性插值估的）。从比赛录像量出自己的平均 cycle（定义见术语表），对照结果文件第 8 节的表，就知道放不放得满。
+- **推荐打法**：
+  - 分区：CD+EF、AB+GH、IJ+KL；每趟选能最早放完的 station，几乎总是离目标面最近的那个。
+  - 按 L4 → L3 → L2 的顺序放：放满时间不变（藻打到地上时 71.1 对 71.3 s，藻拿走时都是 76.0 s），但分数到手更早，前 20 / 30 s 分别多 8 / 6 分。
+  - 藻类拿着走，不打到地上：CD、EF 的 2 个进 processor（资格赛凑 coop），其余 4 个进 net。放满慢约 5 s（加随机误差后 77.7 对 72.5 s），换 28 分，对方 HP 最多拿回 8 分。
+  - 这套打法加随机误差后，放满时间的中位数是 77.2 s，p90 是 81.3 s。
+
+![联盟路线图](results/route_alliance.svg)
+
 ## 快速开始
 
 ```bash
 python3.11 -m venv .venv && .venv/bin/pip install -e '.[dev]'
-.venv/bin/python -m pytest -q                       # 127 个测试，约 20 s
+.venv/bin/python -m pytest -q                       # 170 个测试，约 25 s
 .venv/bin/python experiments/validate.py            # 单车：DP vs 启发式 vs 规划器（新 seed）
 .venv/bin/python experiments/tune_mcts.py --rollouts proc --c 0.5 --prune 0,25 --matches 120 --out results/tune_mcts_prune.md   # MCTS 剪枝对照
 .venv/bin/python experiments/tune_mcts.py --rollouts proc --c 0.02,0.05,0.1,0.2,0.5 --prune 0 --matches 120 --out results/tune_mcts_sweep.md   # 无剪枝 MCTS 的 c 扫描
 .venv/bin/python experiments/alliance.py --seed-offset 200000   # 联盟：启发式 vs rollout / MCTS
 .venv/bin/python experiments/sensitivity.py --dp    # 灵敏度（这是交付物）
 .venv/bin/python experiments/tie_rule_ab.py         # rollout 打平规则的影响（教训 5）
+.venv/bin/python experiments/route_alliance.py      # 联盟放满 L2–L4：路线、分区、顺序、藻类处理（几分钟）
 results/run_final.sh                                # 重跑 README 引用的全部实验（不含测试；约 1 小时，占满 CPU）
 ```
 
@@ -251,9 +272,14 @@ DP 最优策略在做什么（500 局平均）：
 - HP 投 net 没有考虑剩余时间：终场前最后几秒才进 processor 的藻类，模型仍然算对方 HP 能投进 net。实测不影响结果 †：三种启发式各 400 局、rollout-rp（z=1）100 局，最后 5 s 内完成的 processor 都是 0 次，离终场最近的一次还剩 16 s。
 - 联盟里 MCTS-rp（300 次迭代，剪枝）仍然明显落后于它模拟时用的 greedy-proc：P(win) 0.23 对 0.63，E[RP] 3.27 对 4.12。原因还没定位，可能是小预算噪声、内部节点均值污染，或者 c 是在单车场景下标定的、不适用于 rp 目标。在查清之前，联盟层面请用 CRN rollout。
 
-## 待确认的假设
+## 假设
 
-1. **藻类遮挡**：手册没有写明 staged 藻类到底挡住哪些 branch。默认用解读 B（低藻挡本面 L2+L3，高藻挡本面 L3；开局 L3 可用 0 个）。解读 A 是每个藻类只挡它压着的那一对（L2/L3 各剩 6 个）。打过 2025 的队伍一看就知道哪个对，欢迎提 issue。
+1. **藻类遮挡：已证实是解读 B**（低藻挡本面 L2+L3，高藻挡本面 L3；开局 L3 可用 0 个）。手册没有直接写，但几处来源一致：
+   - 手册 §6.5.1：珊瑚碰到藻类就不算分；§6.3.4.2："Staged ALGAE will not contact CORAL placed on L4"。
+   - Chief Delphi 482048 帖（赛季初的讨论）：[第 88 楼](https://www.chiefdelphi.com/t/482048/88)（jacob6838，附照片）说高藻挡住它压着的两根 L3，低藻会碰到 L3 上的珊瑚、并挡住 L2；[第 102 楼](https://www.chiefdelphi.com/t/482048/102)（Garrison）说 L2 有 6 个位置没被挡。
+   - 哪些面是高藻也查到了：AB、EF、IJ 是高藻，CD、GH、KL 是低藻（6328 RobotCode2025Public 的 `FieldConstants`，见 `routing.py`）。
+
+   解读 A（每个藻类只挡它压着的那一对，L2/L3 各剩 6 个）只留作对照。
 2. **profile 数值**：行驶矩阵、各动作耗时、成功率、HP 投 net 命中率（默认 50%）全是占位值。发现 2 的"约 68%"这个临界点直接取决于这些数。
 3. **elite 能同时拿 1 珊瑚 + 1 藻类**（`hold_both=True`）。DP 最优策略里"带着藻去取珊瑚"就是靠这一条。
 4. 没有防守、犯规、机构故障，也没有"掉在地上的珊瑚可以再捡"。coral mark 上的 3 个藻类默认在 TELEOP 开局时仍在地上（AUTO 对它们的影响没有建模），拾取点近似在 reef 附近。
@@ -267,7 +293,7 @@ DP 最优策略在做什么（500 局平均）：
 
 ## 术语表
 
-按需要查，不必从头读完。读"主要发现"主要用到前三组；后两组是求解器和模型的细节。
+按需要查，不必从头读完。读"主要发现"主要用到前三组，发现 5 另见最后一组；第四、五组是求解器和模型的细节。
 
 ### 读数字
 
@@ -306,7 +332,7 @@ DP 最优策略在做什么（500 局平均）：
 | **coral（珊瑚）/ algae（藻类）** | 两种得分道具。珊瑚放在 reef 上的 L1–L4；藻类送进 processor 或投进 net。 |
 | **L1–L4 / branch** | reef 上放珊瑚的四层。L2–L4 每层 12 个 branch（插珊瑚的杆），L1 是槽，不限数量。 |
 | **processor / net / HP** | 藻类的两个去处。processor 6 分，但藻类会滚到对方那边，对方的 HP（场边的人类玩家）能把它投进对方自己的 net，再得 4 分；机器人投 net 直接 4 分。 |
-| **staged 藻类 / 藻类遮挡 A、B** | 开局就架在 reef 上的藻类，会挡住一部分 branch。手册没写清具体挡哪些，所以有 A、B 两种解读，见"待确认的假设"。 |
+| **staged 藻类 / 藻类遮挡 A、B** | 开局就架在 reef 上的 6 个藻类（AB、EF、IJ 三面是高藻，CD、GH、KL 是低藻），会挡住一部分 branch。解读 B 已证实：低藻挡本面 L2+L3，高藻挡本面 L3；解读 A 只留作对照。详见"假设"第 1 条。 |
 | **Coopertition（coop）** | 仅限资格赛：两边联盟各往 processor 送至少 2 个藻类。达成后，Coral RP 只要 3 层达标。 |
 | **RP** | Ranking Point，资格赛的排名分。赢 3、平 1，另有三个奖励 RP：Auto RP、Coral RP、Barge RP。季后赛没有 RP。 |
 | **Coral RP** | L1–L4 每层都放够门槛：常规赛和分区冠军赛（DCMP）5 个，世锦赛 7 个；coop 达成后只要 3 层。 |
@@ -369,14 +395,26 @@ DP 最优策略在做什么（500 局平均）：
 | **不变量 / 模糊测试** | 不变量 = 任何时候都必须成立的性质，例如"L2–L4 每层放的珊瑚不超过没被挡住的 branch 数"。仓库里的测试用随机动作跑模拟来检查它们；审计时还用 2000 个随机配置跑过（†），这叫模糊测试。 |
 | **前向概率传播** | 不抽样比赛，而是从开局起把"车处在每个局面的概率"一步步精确往后推（相同局面合并），直接算出一个策略的精确平均分。审计用它确认 DP 和模拟器完全一致。 |
 
+### 联盟路线（发现 5）
+
+| 术语 | 意思 |
+|---|---|
+| **cycle** | 一台车相邻两次放置之间的时间：放完一个，回 station 取、再放完下一个，中间的排队和去藻都算在内。本仓库说的"平均 cycle" = 这台车从开始到放完最后一个的时间 ÷ 它放的个数。 |
+| **梯形速度曲线** | 从静止加速到最高速、匀速开、再减速停下，速度-时间图像是梯形；路太短、来不及到最高速时是三角形。每段路的时间 = 距离 ÷ 最高速 + 最高速 ÷ 加速度（三角形时是 2√(距离 ÷ 加速度)）。 |
+| **下界** | 不管怎么排都不可能更快的时间：把所有非做不可的事（每个珊瑚的 intake、放置、最短的来回、去藻）加起来平分给几台车，不算任何等待。排出来的时间离下界越近，剩下能优化的越少。 |
+| **模拟退火** | 一种搜索方法：随机改动计划（换两个珊瑚的顺序，或把一个珊瑚换给另一台车），变快就接受，变慢也按一定概率接受，这个概率越来越小，免得卡在"局部最好"。 |
+| **固定计划 / 现场决策** | 固定计划 = 赛前排好每台车依次放哪几个；现场决策 = 每放完一个，再看当时哪个最快。 |
+| **分区** | 每台车只负责固定的几个 reef 面，自己的放完再去帮别人。 |
+| **p10 / p50 / p90 / p99** | 分位数：把所有模拟结果从快到慢排好，取第 10% / 50% / 90% / 99% 位置的值。p50 就是中位数；p90 = 90% 的比赛比它快。 |
+
 ## 目录
 
 ```
 src/frcsim/mcts.py                 与具体游戏无关的 MCTS（只按文件边界拆开，没做通用游戏接口）
-src/frcsim/reefscape2025/          规则 / profile / 模拟器 / DP / 策略
-experiments/                       validate、planners、tune_mcts、alliance、sensitivity、tie_rule_ab
-tests/                             DP 与 expectimax 对拍（含 ring buffer 回绕）、模拟器不变量、RP 逻辑、规划器、MCTS 收敛
-results/                           实验输出：validate_elite.md、alliance_{regular,champs}_B.md、sensitivity.md、tune_mcts_{prune,sweep}.md、tie_rule_ab.md
+src/frcsim/reefscape2025/          规则 / profile / 模拟器 / DP / 策略 / 联盟路线（routing.py）
+experiments/                       validate、planners、tune_mcts、alliance、sensitivity、tie_rule_ab、route_alliance
+tests/                             DP 与 expectimax 对拍（含 ring buffer 回绕）、模拟器不变量、RP 逻辑、规划器、MCTS 收敛、联盟路线
+results/                           实验输出：validate_elite.md、alliance_{regular,champs}_B.md、sensitivity.md、tune_mcts_{prune,sweep}.md、tie_rule_ab.md、route_alliance.{md,svg}
 ```
 
 ## License
